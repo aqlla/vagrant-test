@@ -1,0 +1,10 @@
+---
+- hosts: all
+  gather_facts: true
+  collections:
+    - ucb.k8s
+  roles:
+    - deploy_cluster
+  vars:
+    debug: true
+
