@@ -2,11 +2,11 @@
 # vi: set ft=ruby :
 
 BOX_IMAGE = "ubuntu/jammy64"
-NCTRL = 3
-NWORK = 3
+NCTRL = 1
+NWORK = 2
 
 CMEM = 8192
-CCPU = 2 
+CCPU = 6 
 WMEM = CMEM
 WCPU = CCPU
 
@@ -48,7 +48,7 @@ Vagrant.configure("2") do |config|
     config.vm.define node_hostname do |node|
       node.vm.hostname = "#{node_hostname}.#{DOMAIN}"
       node.vm.network NET_TYPE, ip: node_ip, bridge: NET_BRIDGE_HOST_IF, hostname: true
-      # node.vm.network "forwarded_port", guest_ip: node_ip, guest: 22, host: "#{2230 + i}", adapter: 2 
+      node.vm.network "forwarded_port", guest_ip: node_ip, guest: 22, host: "#{2230 + i}", adapter: 2 
 
       node.vm.provider "virtualbox" do |vb|
         vb.name = node_hostname 
@@ -69,10 +69,7 @@ Vagrant.configure("2") do |config|
           k8s_role: "ctrl",
           k8s_node_if: CLIENT_BRIDGE_IF,
           k8s_node_ip: node_ip,
-          k8s_node_host: node_hostname,
-          k8s_ctrl_priority: "#{110 - i}",
-          k8s_ctrl_state_master: i == 1,
-          k8s_join_extra_args: "--control-plane"
+          k8s_node_host: node_hostname
         }
       end
     end
@@ -85,7 +82,7 @@ Vagrant.configure("2") do |config|
     config.vm.define node_hostname do |node|
       node.vm.hostname = "#{node_hostname}.#{DOMAIN}"
       node.vm.network NET_TYPE, ip: node_ip, bridge: NET_BRIDGE_HOST_IF, hostname: true
-      # node.vm.network "forwarded_port", guest_ip: node_ip, guest: 22, host: "#{2240 + i}", adapter: 2    
+      node.vm.network "forwarded_port", guest_ip: node_ip, guest: 22, host: "#{2240 + i}", adapter: 2    
    
       node.vm.provider "virtualbox" do |vb|
         vb.name = node_hostname
