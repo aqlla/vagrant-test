@@ -3,10 +3,10 @@
 
 BOX_IMAGE = "ubuntu/jammy64"
 NCTRL = 3
-NWORK = 3
+NWORK = 1 
 
 CMEM = 8192
-CCPU = 2 
+CCPU = 4 
 WMEM = CMEM
 WCPU = CCPU
 
@@ -14,7 +14,7 @@ HOST_PREFIX = "it-kube"
 DOMAIN = "acs.sh"
 
 NAT_IP_RANGE = "10.3/16"
-BRIDGED_IP_RANGE = "10.0/24"
+BRIDGED_IP_RANGE = "10.0.0.0/22"
 NODE_BRIDGE_IP_PREFIX = "10.0.2."
 
 CLIENT_NAT_IF = "enp0s3"
@@ -38,7 +38,6 @@ Vagrant.configure("2") do |config|
   end
   
   config.vm.box = BOX_IMAGE
-  config.vm.box_check_update = true
   config.vm.synced_folder SYNCDIR_HOST, SYNCDIR_GUEST
 
   (1..NCTRL).each do |i|
@@ -72,7 +71,11 @@ Vagrant.configure("2") do |config|
           k8s_node_host: node_hostname,
           k8s_ctrl_priority: "#{110 - i}",
           k8s_ctrl_state_master: i == 1,
-          k8s_join_extra_args: "--control-plane"
+          k8s_join_extra_args: [
+            "--control-plane",
+            "--apiserver-advertise-address=#{node_ip}"
+          ], 
+          #k8s_init_dry_run: true
         }
       end
     end
