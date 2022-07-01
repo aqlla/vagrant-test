@@ -1,0 +1,12 @@
+Log created: 2022-06-24T22:44:18.744221000Z
+Process ID:  4153386 (0x3f602a)
+Parent PID:  1 (0x1)
+Executable:  /usr/lib/virtualbox/VBoxHeadless
+Arg[0]: /usr/lib/virtualbox/VBoxHeadless
+Arg[1]: --comment
+Arg[2]: it-kube-m2
+Arg[3]: --startvm
+Arg[4]: eed26bc7-dbd3-4daf-a57e-4013fbe885f4
+Arg[5]: --vrde
+Arg[6]: config
+AddRef: illegal refcnt=3221225469 state=2
