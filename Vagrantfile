@@ -3,7 +3,7 @@
 
 BOX_IMAGE = "ubuntu/jammy64"
 NCTRL = 3
-NWORK = 3 
+NWORK = 1 
 
 CMEM = 8192
 CCPU = 3
