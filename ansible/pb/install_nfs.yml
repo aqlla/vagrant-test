@@ -1,0 +1,13 @@
+---
+- hosts: all
+  gather_facts: true
+  tasks:
+    - name: Install nfs-common
+      become: true
+      ansible.builtin.apt:
+        name: nfs-common 
+        update_cache: true
+        cache_valid_time: 1800
+  vars:
+    debug: true
+    skip_apt_upgrade: true
