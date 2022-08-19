@@ -1,0 +1,5 @@
+Acquire {
+    http::proxy  "http://172.29.0.2:3142";
+    https::proxy "http://172.29.0.2:3142";
+    ftp::proxy   "http://172.29.0.2:3142";
+}

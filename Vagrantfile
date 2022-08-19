@@ -1,119 +1,89 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-BOX_IMAGE = "ubuntu/jammy64"
-NCTRL = 3
-NWORK = 1 
-
-CMEM = 8192
-CCPU = 3
-WMEM = CMEM
-WCPU = CCPU
-
-HOST_PREFIX = "it-kube"
-DOMAIN = "acs.sh"
-APISERVER_VIP = "lb.kube.acs.sh"
-APISERVER_DEST_PORT = 8443
-
-NAT_IP_RANGE = "10.3/16"
-BRIDGED_IP_RANGE = "10.0.0.0/22"
-NODE_BRIDGE_IP_PREFIX = "10.0.2."
-
-CLIENT_NAT_IF = "enp0s3"
-CLIENT_BRIDGE_IF = "enp0s8"
-
-NET_TYPE = "public_network"
-NET_BRIDGE_HOST_IF = "br0"
-NET_GATEWAY_ADDR = "10.0.0.1"
-
-SYNCDIR_HOST = "shared_resources"
-SYNCDIR_GUEST = "/home/vagrant/shared_resources"
+require './vagrant.d/default.rb'
+require './vagrant.d/kubernetes.rb'
 
 Vagrant.configure("2") do |config|
-  def common_ansible(ansible)
-    ansible.verbose = "v"
-    ansible.playbook = "test.yml"
-    ansible.ask_become_pass = false 
-  end
+    config.vm.box = BOX_IMAGE
+    config.vm.box_check_update = BOX_CHECK_UPDATE
+    config.vm.synced_folder SYNCDIR_HOST, SYNCDIR_GUEST
 
-  def add_bridge_route(node, node_ip)
-    node.vm.provision "shell", inline: <<-SHELL
-      sudo ip route add #{BRIDGED_IP_RANGE} dev #{CLIENT_BRIDGE_IF} proto kernel scope link src #{node_ip};
-      sudo ip route add default via #{NET_GATEWAY_ADDR} dev #{CLIENT_BRIDGE_IF} src #{node_ip};
-SHELL
-  end
-  
-  config.vm.box = BOX_IMAGE
-  config.vm.synced_folder SYNCDIR_HOST, SYNCDIR_GUEST
+    # Configure Control-plane Nodes
+    (1..node_opt('ctrl', 'count')).each do |i|
+        node_ip = get_ip('ctrl', i)
+        node_hostname = get_hostname('ctrl', i)
 
-  (1..NCTRL).each do |i|
-    node_hostname = "#{HOST_PREFIX}-m#{i}"
-    node_ip = "#{NODE_BRIDGE_IP_PREFIX}#{10 + i}"
- 
-    config.vm.define node_hostname do |node|
-      node.vm.hostname = "#{node_hostname}.#{DOMAIN}"
-      node.vm.network NET_TYPE, ip: node_ip, bridge: NET_BRIDGE_HOST_IF, hostname: true
-
-      node.vm.provider "virtualbox" do |vb|
-        vb.name = node_hostname 
-        vb.cpus = CCPU
-        vb.memory = CMEM
-
-        vb.customize ["modifyvm", :id, "--natnet1", NAT_IP_RANGE]
-      end
-
-      add_bridge_route node, node_ip
-
-      node.vm.provision "ansible" do |ansible|
-        common_ansible ansible
-
-        ansible.extra_vars = {
-          k8s_role: "ctrl",
-          k8s_node_if: CLIENT_BRIDGE_IF,
-          k8s_node_ip: node_ip,
-          k8s_node_host: node_hostname,
-          k8s_ctrl_priority: "#{110 - i}",
-          k8s_ctrl_state_master: i == 1,
-          k8s_join_extra_args: [
-            "--control-plane",
-            "--apiserver-advertise-address=#{node_ip}"
-          ], 
-          k8s_init_extra_args: [
-            "--apiserver-advertise-address=#{node_ip}",
-            "--control-plane-endpoint=#{APISERVER_VIP}:#{APISERVER_DEST_PORT}"
-          ]
-          #k8s_init_dry_run: true
-        }
-      end
+        config.vm.define node_hostname do |node|
+            common_config(node, 'ctrl', i, {
+                k8s_ctrl_priority: 110 - i,
+                k8s_ctrl_state: i == 1? 'MASTER': 'BACKUP',
+                k8s_ctrl_state_master: i == 1,              # Depricated
+                k8s_ctrl_hosts: get_control_hosts(),
+                k8s_vip: {
+                    ip: KUBE[:virtual_ip],
+                    cidr: KUBE[:virtual_ip_cidr],
+                    hostname: KUBE[:virtual_ip_hostname]
+                },
+                k8s_join_extra_args: [
+                    "--control-plane",
+                    "--apiserver-advertise-address=#{node_ip}"
+                ], 
+                k8s_init_extra_args: [
+                    "--apiserver-advertise-address=#{node_ip}",
+                    "--control-plane-endpoint=#{KUBE[:virtual_ip_hostname]}:#{KUBE[:apiserver_port][:dest]}"
+                ]
+            })
+        end
     end
-  end
 
-  (1..NWORK).each do |i|
-    node_hostname = "#{HOST_PREFIX}-w#{i}"
-    node_ip = "#{NODE_BRIDGE_IP_PREFIX}#{20 + i}"
+    # Configure Worker Nodes
+    (1..node_opt('work', 'count')).each do |i|
+        hostname = get_hostname('work', i)
+        config.vm.define hostname do |node|
+            common_config(node, 'work', i)
+        end
+    end
+end
 
-    config.vm.define node_hostname do |node|
-      node.vm.hostname = "#{node_hostname}.#{DOMAIN}"
-      node.vm.network NET_TYPE, ip: node_ip, bridge: NET_BRIDGE_HOST_IF, hostname: true
-   
-      node.vm.provider "virtualbox" do |vb|
+
+###
+# Configuration which is common between all nodes. 
+#
+def common_config(node, role, index, ansible_vars = {})
+    node_ip = get_ip(role, index)
+    node_hostname = get_hostname(role, index)
+
+    node.vm.hostname = node_hostname
+    node.vm.network "public_network", ip: node_ip, bridge: BRIDGE_HOST_IF, hostname: true
+    add_bridge_route node, node_ip
+
+    node.vm.provider "virtualbox" do |vb|
         vb.name = node_hostname
-        vb.cpus = WCPU
-        vb.memory = WMEM
+        vb.cpus = NCPU
+        vb.memory = NMEM
+
+        # keep vbox off our net
         vb.customize ["modifyvm", :id, "--natnet1", NAT_IP_RANGE]
-      end
-
-      add_bridge_route node, node_ip
-
-      node.vm.provision "ansible" do |ansible|
-        common_ansible ansible
-        ansible.extra_vars = {
-          k8s_role: "worker",
-          k8s_node_if: CLIENT_BRIDGE_IF,
-          k8s_node_ip: node_ip,
-          k8s_node_host: node_hostname
-        }
-      end
     end
-  end
+
+    set_apt_proxy(node, "172.29.0.2", 3142)
+
+    ansible_extra_vars = ansible_vars.merge({
+        k8s_role: role,
+        k8s_node_if: BRIDGE_CLIENT_IF,
+        k8s_node_ip: node_ip,
+        k8s_node_host: node_hostname,
+        k8s_kubernetes_version: KUBE[:version],
+        k8s_config_args: [
+            "--cluster-domain=#{KUBE[:cluster_domain]}"
+        ]
+    })
+
+    node.vm.provision "ansible", run: "once" do |ansible|
+        ansible.verbose = "v"
+        ansible.playbook = "ansible/pb/test.yml"
+        ansible.ask_become_pass = false 
+        ansible.extra_vars = ansible_extra_vars
+    end
 end
